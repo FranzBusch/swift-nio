@@ -13,6 +13,28 @@
 //===----------------------------------------------------------------------===//
 
 #if compiler(>=5.5.2) && canImport(_Concurrency)
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+public struct NIOAsyncChannelWriter<OutboundOut: Sendable>: Sendable {
+    @usableFromInline
+    let outboundWriter: NIOAsyncChannelWriterHandler<OutboundOut>.Writer
+
+    @inlinable
+    init(outboundWriter: NIOAsyncChannelWriterHandler<OutboundOut>.Writer) {
+        self.outboundWriter = outboundWriter
+    }
+
+    public func writeAndFlush(_ data: OutboundOut) async throws {
+        try await self.outboundWriter.yield(data)
+    }
+
+    public func writeAndFlush<Writes: Sequence>(contentsOf data: Writes) async throws where Writes.Element == OutboundOut {
+        try await self.outboundWriter.yield(contentsOf: data)
+    }
+
+    public func finish() {
+        self.outboundWriter.finish()
+    }
+}
 
 /// Wraps a NIO ``Channel`` object into a form suitable for use in Swift Concurrency.
 ///
@@ -40,9 +62,8 @@ public final class NIOAsyncChannel<InboundIn: Sendable, OutboundOut: Sendable>: 
     public let channel: Channel
 
     public let inboundStream: NIOInboundChannelStream<InboundIn>
-
-    @usableFromInline
-    let outboundWriter: NIOAsyncChannelWriterHandler<OutboundOut>.Writer
+    public let outboundWriter: NIOAsyncChannelWriter<OutboundOut>
+    
 
     @inlinable
     public init(
@@ -61,6 +82,21 @@ public final class NIOAsyncChannel<InboundIn: Sendable, OutboundOut: Sendable>: 
 
     @inlinable
     public init(
+        wrapping channel: Channel,
+        backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        enableOutboundHalfClosure: Bool = true,
+        inboundIn: InboundIn.Type = InboundIn.self
+    ) async throws where OutboundOut == Never {
+        (self.inboundStream, self.outboundWriter) = try await channel.eventLoop.submit {
+            try channel.syncAddAsyncHandlers(backpressureStrategy: backpressureStrategy, enableOutboundHalfClosure: enableOutboundHalfClosure)
+        }.get()
+
+        self.channel = channel
+        self.outboundWriter.finish()
+    }
+
+    @inlinable
+    public init(
         synchronouslyWrapping channel: Channel,
         backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         enableOutboundHalfClosure: Bool = true,
@@ -73,13 +109,17 @@ public final class NIOAsyncChannel<InboundIn: Sendable, OutboundOut: Sendable>: 
     }
 
     @inlinable
-    public func writeAndFlush(_ data: OutboundOut) async throws {
-        try await self.outboundWriter.yield(data)
-    }
+    public init(
+        synchronouslyWrapping channel: Channel,
+        backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        enableOutboundHalfClosure: Bool = true,
+        inboundIn: InboundIn.Type = InboundIn.self
+    ) throws where OutboundOut == Never {
+        channel.eventLoop.preconditionInEventLoop()
+        (self.inboundStream, self.outboundWriter) = try channel.syncAddAsyncHandlers(backpressureStrategy: backpressureStrategy, enableOutboundHalfClosure: enableOutboundHalfClosure)
+        self.channel = channel
 
-    @inlinable
-    public func writeAndFlush<Writes: Sequence>(contentsOf data: Writes) async throws where Writes.Element == OutboundOut {
-        try await self.outboundWriter.yield(contentsOf: data)
+        self.outboundWriter.finish()
     }
 }
 
@@ -89,14 +129,14 @@ extension Channel {
     func syncAddAsyncHandlers<InboundIn: Sendable, OutboundOut: Sendable>(
         backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark?,
         enableOutboundHalfClosure: Bool
-    ) throws -> (NIOInboundChannelStream<InboundIn>, NIOAsyncChannelWriterHandler<OutboundOut>.Writer) {
+    ) throws -> (NIOInboundChannelStream<InboundIn>, NIOAsyncChannelWriter<OutboundOut>) {
         self.eventLoop.assertInEventLoop()
 
         let closeRatchet = CloseRatchet()
         let inboundStream = try NIOInboundChannelStream<InboundIn>(self, backpressureStrategy: backpressureStrategy, closeRatchet: closeRatchet)
         let (handler, writer) = NIOAsyncChannelWriterHandler<OutboundOut>.makeHandler(loop: self.eventLoop, closeRatchet: closeRatchet, enableOutboundHalfClosure: enableOutboundHalfClosure)
         try self.pipeline.syncOperations.addHandler(handler)
-        return (inboundStream, writer)
+        return (inboundStream, NIOAsyncChannelWriter(outboundWriter: writer))
     }
 }
 #endif

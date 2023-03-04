@@ -364,9 +364,14 @@ public final class ServerBootstrap {
         host: String,
         port: Int,
         serverBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil
+        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        enableOutboundHalfClosure: Bool
     ) async throws -> NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never> {
-        return try await self.bindAsyncChannel0(serverBackpressureStrategy: serverBackpressureStrategy, childBackpressureStrategy: childBackpressureStrategy) {
+        return try await self.bindAsyncChannel0(
+            serverBackpressureStrategy: serverBackpressureStrategy,
+            childBackpressureStrategy: childBackpressureStrategy,
+            enableOutboundHalfClosure: enableOutboundHalfClosure
+        ) {
             return try SocketAddress.makeAddressResolvingHost(host, port: port)
         }
     }
@@ -379,9 +384,14 @@ public final class ServerBootstrap {
     public func bind<ChildChannelInboundIn: Sendable, ChildChannelOutboundOut: Sendable>(
         to address: SocketAddress,
         serverBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil
+        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        enableOutboundHalfClosure: Bool
     ) async throws -> NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never> {
-        return try await self.bindAsyncChannel0(serverBackpressureStrategy: serverBackpressureStrategy, childBackpressureStrategy: childBackpressureStrategy) { address }
+        return try await self.bindAsyncChannel0(
+            serverBackpressureStrategy: serverBackpressureStrategy,
+            childBackpressureStrategy: childBackpressureStrategy,
+            enableOutboundHalfClosure: enableOutboundHalfClosure
+        ) { address }
     }
 
     /// Bind the `ServerSocketChannel` to a UNIX Domain Socket.
@@ -392,9 +402,14 @@ public final class ServerBootstrap {
     public func bind<ChildChannelInboundIn: Sendable, ChildChannelOutboundOut: Sendable>(
         unixDomainSocketPath: String,
         serverBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil
+        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        enableOutboundHalfClosure: Bool
     ) async throws -> NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never> {
-        return try await self.bindAsyncChannel0(serverBackpressureStrategy: serverBackpressureStrategy, childBackpressureStrategy: childBackpressureStrategy) {
+        return try await self.bindAsyncChannel0(
+            serverBackpressureStrategy: serverBackpressureStrategy,
+            childBackpressureStrategy: childBackpressureStrategy,
+            enableOutboundHalfClosure: enableOutboundHalfClosure
+        ) {
             try SocketAddress(unixDomainSocketPath: unixDomainSocketPath)
         }
     }
@@ -415,7 +430,12 @@ public final class ServerBootstrap {
             try BaseSocket.cleanupSocket(unixDomainSocketPath: unixDomainSocketPath)
         }
 
-        return try await self.bind(unixDomainSocketPath: unixDomainSocketPath, serverBackpressureStrategy: serverBackpressureStrategy, childBackpressureStrategy: childBackpressureStrategy)
+        return try await self.bind(
+            unixDomainSocketPath: unixDomainSocketPath,
+            serverBackpressureStrategy: serverBackpressureStrategy,
+            childBackpressureStrategy: childBackpressureStrategy,
+            enableOutboundHalfClosure: true
+        )
     }
 
     /// Use the existing bound socket file descriptor.
@@ -426,7 +446,8 @@ public final class ServerBootstrap {
     public func withBoundSocket<ChildChannelInboundIn: Sendable, ChildChannelOutboundOut: Sendable>(
         _ socket: NIOBSDSocket.Handle,
         serverBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil
+        childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        enableOutboundHalfClosure: Bool
     ) async throws -> NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never> {
         func makeChannel(_ eventLoop: SelectableEventLoop, _ childEventLoopGroup: EventLoopGroup, _ enableMPTCP: Bool) throws -> ServerSocketChannel {
             if enableMPTCP {
@@ -437,7 +458,8 @@ public final class ServerBootstrap {
         return try await self.bindAsyncChannel0(
             makeServerChannel: makeChannel,
             serverBackpressureStrategy: serverBackpressureStrategy,
-            childBackpressureStrategy: childBackpressureStrategy
+            childBackpressureStrategy: childBackpressureStrategy,
+            enableOutboundHalfClosure: enableOutboundHalfClosure
         ) { (eventLoop, serverChannel) in
             let promise = eventLoop.makePromise(of: Void.self)
             serverChannel.registerAlreadyConfigured0(promise: promise)
@@ -470,6 +492,7 @@ public final class ServerBootstrap {
     private func bindAsyncChannel0<ChildChannelInboundIn: Sendable, ChildChannelOutboundOut: Sendable>(
         serverBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark?,
         childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark?,
+        enableOutboundHalfClosure: Bool,
         _ makeSocketAddress: () throws -> SocketAddress
     ) async throws -> NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never> {
         let address = try makeSocketAddress()
@@ -484,7 +507,8 @@ public final class ServerBootstrap {
         return try await self.bindAsyncChannel0(
             makeServerChannel: makeChannel,
             serverBackpressureStrategy: serverBackpressureStrategy,
-            childBackpressureStrategy: childBackpressureStrategy
+            childBackpressureStrategy: childBackpressureStrategy,
+            enableOutboundHalfClosure: enableOutboundHalfClosure
         ) { (eventLoop, serverChannel) in
             serverChannel.registerAndDoSynchronously { serverChannel in
                 serverChannel.bind(to: address)
@@ -535,6 +559,7 @@ public final class ServerBootstrap {
         makeServerChannel: MakeServerChannel,
         serverBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark?,
         childBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark?,
+        enableOutboundHalfClosure: Bool,
         _ register: @escaping Register
     ) async throws -> NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never>  {
         let eventLoop = self.group.next()
@@ -561,7 +586,8 @@ public final class ServerBootstrap {
                     )
                     let asyncChannel = try NIOAsyncChannel<NIOAsyncChannel<ChildChannelInboundIn, ChildChannelOutboundOut>, Never>(
                         synchronouslyWrapping: serverChannel,
-                        backpressureStrategy: serverBackpressureStrategy
+                        backpressureStrategy: serverBackpressureStrategy,
+                        enableOutboundHalfClosure: enableOutboundHalfClosure
                     )
                     // TODO: this is not ideal, we need a better way to do this wrap-then-unwrap.
                     try serverChannel.pipeline.syncOperations.addHandler(
