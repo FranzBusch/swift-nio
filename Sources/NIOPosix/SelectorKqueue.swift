@@ -149,19 +149,17 @@ extension Selector: _SelectorBackendProtocol {
         }
     }
 
-    private func kqueueUpdateEventNotifications<S: Selectable>(selectable: S, interested: SelectorEventSet, oldInterested: SelectorEventSet?, registrationID: SelectorRegistrationID) throws {
+    private func kqueueUpdateEventNotifications(fileDescriptor: CInt, interested: SelectorEventSet, oldInterested: SelectorEventSet?, registrationID: SelectorRegistrationID) throws {
         assert(self.myThread == NIOThread.current)
         let oldKQueueFilters = KQueueEventFilterSet(selectorEventSet: oldInterested ?? ._none)
         let newKQueueFilters = KQueueEventFilterSet(selectorEventSet: interested)
         assert(interested.contains(.reset))
         assert(oldInterested?.contains(.reset) ?? true)
 
-        try selectable.withUnsafeHandle {
-            try newKQueueFilters.calculateKQueueFilterSetChanges(previousKQueueFilterSet: oldKQueueFilters,
-                                                                 fileDescriptor: $0,
-                                                                 registrationID: registrationID,
-                                                                 kqueueApplyEventChangeSet)
-        }
+        try newKQueueFilters.calculateKQueueFilterSetChanges(previousKQueueFilterSet: oldKQueueFilters,
+                                                             fileDescriptor: fileDescriptor,
+                                                             registrationID: registrationID,
+                                                             kqueueApplyEventChangeSet)
     }
     
     func initialiseState0() throws {
@@ -185,15 +183,15 @@ extension Selector: _SelectorBackendProtocol {
     }
     
     func register0<S: Selectable>(selectable: S, fileDescriptor: CInt, interested: SelectorEventSet, registrationID: SelectorRegistrationID) throws {
-        try kqueueUpdateEventNotifications(selectable: selectable, interested: interested, oldInterested: nil, registrationID: registrationID)
+        try kqueueUpdateEventNotifications(fileDescriptor: fileDescriptor, interested: interested, oldInterested: nil, registrationID: registrationID)
     }
 
-    func reregister0<S: Selectable>(selectable: S, fileDescriptor: CInt, oldInterested: SelectorEventSet, newInterested: SelectorEventSet, registrationID: SelectorRegistrationID) throws {
-        try kqueueUpdateEventNotifications(selectable: selectable, interested: newInterested, oldInterested: oldInterested, registrationID: registrationID)
+    func reregister0(fileDescriptor: CInt, oldInterested: SelectorEventSet, newInterested: SelectorEventSet, registrationID: SelectorRegistrationID) throws {
+        try kqueueUpdateEventNotifications(fileDescriptor: fileDescriptor, interested: newInterested, oldInterested: oldInterested, registrationID: registrationID)
     }
     
     func deregister0<S: Selectable>(selectable: S, fileDescriptor: CInt, oldInterested: SelectorEventSet, registrationID: SelectorRegistrationID) throws {
-        try kqueueUpdateEventNotifications(selectable: selectable, interested: .reset, oldInterested: oldInterested, registrationID: registrationID)
+        try kqueueUpdateEventNotifications(fileDescriptor: fileDescriptor, interested: .reset, oldInterested: oldInterested, registrationID: registrationID)
     }
 
     /// Apply the given `SelectorStrategy` and execute `body` once it's complete (which may produce `SelectorEvent`s to handle).
@@ -203,14 +201,18 @@ extension Selector: _SelectorBackendProtocol {
     ///     - body: The function to execute for each `SelectorEvent` that was produced.
     func whenReady0(strategy: SelectorStrategy, onLoopBegin loopStart: () -> Void, _ body: (SelectorEvent<R>) throws -> Void) throws -> Void {
         assert(self.myThread == NIOThread.current)
+//        print("whenReady0 kqueue")
         guard self.lifecycleState == .open else {
+//            print("Not open")
             throw IOError(errnoCode: EBADF, reason: "can't call whenReady for selector as it's \(self.lifecycleState).")
         }
 
         let timespec = Selector.toKQueueTimeSpec(strategy: strategy)
+//        print(timespec)
         let ready = try timespec.withUnsafeOptionalPointer { ts in
             Int(try KQueue.kevent(kq: self.selectorFD, changelist: nil, nchanges: 0, eventlist: events, nevents: Int32(eventsCapacity), timeout: ts))
         }
+//        print(ready)
 
         loopStart()
 
@@ -261,11 +263,86 @@ extension Selector: _SelectorBackendProtocol {
         growEventArrayIfNeeded(ready: ready)
     }
 
+    func whenReady0(
+        strategy: SelectorStrategy,
+        onLoopBegin loopStart: () -> Void,
+        _ body: (SelectorEventSet, inout R) throws -> Void
+    ) throws -> Void {
+        assert(self.myThread == NIOThread.current)
+//        print("whenReady0 kqueue")
+        guard self.lifecycleState == .open else {
+//            print("Not open")
+            throw IOError(errnoCode: EBADF, reason: "can't call whenReady for selector as it's \(self.lifecycleState).")
+        }
+
+        let timespec = Selector.toKQueueTimeSpec(strategy: strategy)
+//        print(timespec)
+        let ready = try timespec.withUnsafeOptionalPointer { ts in
+            Int(try KQueue.kevent(kq: self.selectorFD, changelist: nil, nchanges: 0, eventlist: events, nevents: Int32(eventsCapacity), timeout: ts))
+        }
+//        print(ready)
+
+        loopStart()
+
+        for i in 0..<ready {
+            let ev = events[i]
+            let filter = Int32(ev.filter)
+            let eventRegistrationID = SelectorRegistrationID(kqueueUData: ev.udata)
+            guard Int32(ev.flags) & EV_ERROR == 0 else {
+                throw IOError(errnoCode: Int32(ev.data), reason: "kevent returned with EV_ERROR set: \(String(describing: ev))")
+            }
+//            print(self)
+//            print(self.registrations)
+            guard filter != EVFILT_USER, var registration = registrations[Int(ev.ident)] else {
+                continue
+            }
+            guard eventRegistrationID == registration.registrationID else {
+                continue
+            }
+            var selectorEvent: SelectorEventSet = ._none
+            switch filter {
+            case EVFILT_READ:
+                selectorEvent.formUnion(.read)
+                fallthrough // falling through here as `EVFILT_READ` also delivers `EV_EOF` (meaning `.readEOF`)
+            case EVFILT_EXCEPT:
+                if Int32(ev.flags) & EV_EOF != 0 && registration.interested.contains(.readEOF) {
+                    // we only add `.readEOF` if it happened and the user asked for it
+                    selectorEvent.formUnion(.readEOF)
+                }
+            case EVFILT_WRITE:
+                selectorEvent.formUnion(.write)
+            default:
+                // We only use EVFILT_USER, EVFILT_READ, EVFILT_EXCEPT and EVFILT_WRITE.
+                fatalError("unexpected filter \(ev.filter)")
+            }
+            if ev.fflags != 0 {
+                selectorEvent.formUnion(.reset)
+            }
+            // we can only verify the events for i == 0 as for i > 0 the user might have changed the registrations since then.
+            assert(i != 0 || selectorEvent.isSubset(of: registration.interested), "selectorEvent: \(selectorEvent), registration: \(registration)")
+
+            // in any case we only want what the user is currently registered for & what we got
+            selectorEvent = selectorEvent.intersection(registration.interested)
+
+            guard selectorEvent != ._none else {
+                continue
+            }
+            do {
+                try body(selectorEvent, &registration)
+                try self.reregisterHandle(handle: NIOBSDSocket.Handle(ev.ident), interested: registration.interested)
+            } catch {
+                try self.reregisterHandle(handle: NIOBSDSocket.Handle(ev.ident), interested: registration.interested)
+                throw error
+            }
+        }
+
+        growEventArrayIfNeeded(ready: ready)
+    }
+
     /// Close the `Selector`.
     ///
     /// After closing the `Selector` it's no longer possible to use it.
      func close0() throws {
-
         self.externalSelectorFDLock.withLock {
             // We try! all of the closes because close can only fail in the following ways:
             // - EINTR, which we eat in Posix.close

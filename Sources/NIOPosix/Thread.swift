@@ -40,7 +40,7 @@ protocol ThreadOps {
 /// A Thread that executes some runnable block.
 ///
 /// All methods exposed are thread-safe.
-final class NIOThread {
+public final class NIOThread {
     internal typealias ThreadBoxValue = (body: (NIOThread) -> Void, name: String?)
     internal typealias ThreadBox = Box<ThreadBoxValue>
 
@@ -84,7 +84,7 @@ final class NIOThread {
     ///     - name: The name of the `NIOThread` or `nil` if no specific name should be set.
     ///     - body: The function to execute within the spawned `NIOThread`.
     ///     - detach: Whether to detach the thread. If the thread is not detached it must be `join`ed.
-    static func spawnAndRun(name: String? = nil, detachThread: Bool = true,
+    public static func spawnAndRun(name: String? = nil, detachThread: Bool = true,
                             body: @escaping (NIOThread) -> Void) {
         var handle: ThreadOpsSystem.ThreadHandle? = nil
 
@@ -97,19 +97,19 @@ final class NIOThread {
     }
 
     /// Returns `true` if the calling thread is the same as this one.
-    var isCurrent: Bool {
+    public var isCurrent: Bool {
         return ThreadOpsSystem.isCurrentThread(self.handle)
     }
 
     /// Returns the current running `NIOThread`.
-    static var current: NIOThread {
+    public static var current: NIOThread {
         let handle = ThreadOpsSystem.currentThread
         return NIOThread(handle: handle, desiredName: nil)
     }
 }
 
 extension NIOThread: CustomStringConvertible {
-    var description: String {
+    public var description: String {
         let desiredName = self.desiredName
         let actualName = self.currentName
 
@@ -219,7 +219,7 @@ public final class ThreadSpecificVariable<Value: AnyObject> {
 extension ThreadSpecificVariable: @unchecked Sendable where Value: Sendable {}
 
 extension NIOThread: Equatable {
-    static func ==(lhs: NIOThread, rhs: NIOThread) -> Bool {
+    public static func ==(lhs: NIOThread, rhs: NIOThread) -> Bool {
         return lhs.withUnsafeThreadHandle { lhs in
             rhs.withUnsafeThreadHandle { rhs in
                 ThreadOpsSystem.compareThreads(lhs, rhs)

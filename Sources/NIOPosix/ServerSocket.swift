@@ -15,12 +15,12 @@
 import NIOCore
 
 /// A server socket that can accept new connections.
-/* final but tests */ class ServerSocket: BaseSocket, ServerSocketProtocol {
+/* final but tests */ public class ServerSocket: BaseSocket, ServerSocketProtocol {
     typealias SocketType = ServerSocket
     private let cleanupOnClose: Bool
 
     public final class func bootstrap(protocolFamily: NIOBSDSocket.ProtocolFamily, host: String, port: Int) throws -> ServerSocket {
-        let socket = try ServerSocket(protocolFamily: protocolFamily)
+        let socket = try ServerSocket(protocolFamily: protocolFamily, setNonBlocking: true)
         try socket.bind(to: SocketAddress.makeAddressResolvingHost(host, port: port))
         try socket.listen()
         return socket
@@ -77,7 +77,7 @@ import NIOCore
     /// - parameters:
     ///     - backlog: The backlog to use.
     /// - throws: An `IOError` if creation of the socket failed.
-    func listen(backlog: Int32 = 128) throws {
+    public func listen(backlog: Int32 = 128) throws {
         try withUnsafeHandle {
             _ = try NIOBSDSocket.listen(socket: $0, backlog: backlog)
         }
@@ -89,7 +89,7 @@ import NIOCore
     ///     - setNonBlocking: set non-blocking mode on the returned `Socket`. On Linux this will use accept4 with SOCK_NONBLOCK to save a system call.
     /// - returns: A `Socket` once a new connection was established or `nil` if this `ServerSocket` is in non-blocking mode and there is no new connection that can be accepted when this method is called.
     /// - throws: An `IOError` if the operation failed.
-    func accept(setNonBlocking: Bool = false) throws -> Socket? {
+    public func accept(setNonBlocking: Bool = false) throws -> Socket? {
         return try withUnsafeHandle { fd in
             #if os(Linux)
             let flags: Int32
@@ -129,7 +129,7 @@ import NIOCore
     /// After the socket was closed all other methods will throw an `IOError` when called.
     ///
     /// - throws: An `IOError` if the operation failed.
-    override func close() throws {
+    public override func close() throws {
         let maybePathname = self.cleanupOnClose ? (try? self.localAddress().pathname) : nil
         try super.close()
         if let socketPath = maybePathname {

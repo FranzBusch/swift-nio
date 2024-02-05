@@ -104,7 +104,7 @@ extension NIOBSDSocket {
         return try Posix.write(descriptor: s, pointer: buf, size: len)
     }
 
-    static func setsockopt(socket: NIOBSDSocket.Handle,
+    public static func setsockopt(socket: NIOBSDSocket.Handle,
                            level: NIOBSDSocket.OptionLevel,
                            option_name optname: NIOBSDSocket.Option,
                            option_value optval: UnsafeRawPointer,

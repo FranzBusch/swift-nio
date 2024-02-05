@@ -15,10 +15,10 @@
 import NIOCore
 
 /// The container used for writing multiple buffers via `writev`.
-typealias IOVector = iovec
+public typealias IOVector = iovec
 
 // TODO: scattering support
-/* final but tests */ class Socket: BaseSocket, SocketProtocol {
+/* final but tests */ public class Socket: BaseSocket, SocketProtocol {
     typealias SocketType = Socket
 
     /// The maximum number of bytes to write per `writev` call.
@@ -36,7 +36,7 @@ typealias IOVector = iovec
     ///         argument to the socket syscall. Defaults to 0.
     ///     - setNonBlocking: Set non-blocking mode on the socket.
     /// - throws: An `IOError` if creation of the socket failed.
-    init(
+    public init(
         protocolFamily: NIOBSDSocket.ProtocolFamily,
         type: NIOBSDSocket.SocketType,
         protocolSubtype: NIOBSDSocket.ProtocolSubtype = .default,
@@ -108,7 +108,7 @@ typealias IOVector = iovec
     ///     - address: The `SocketAddress` to which the connection should be established.
     /// - returns: `true` if the connection attempt completes, `false` if `finishConnect` must be called later to complete the connection attempt.
     /// - throws: An `IOError` if the operation failed.
-    func connect(to address: SocketAddress) throws -> Bool {
+    public func connect(to address: SocketAddress) throws -> Bool {
         return try withUnsafeHandle { fd in
             return try address.withSockAddr { (ptr, size) in
                 return try NIOBSDSocket.connect(socket: fd, address: ptr,
@@ -129,7 +129,7 @@ typealias IOVector = iovec
     /// Finish a previous non-blocking `connect` operation.
     ///
     /// - throws: An `IOError` if the operation failed.
-    func finishConnect() throws {
+    public func finishConnect() throws {
         let result: Int32 = try getOption(level: .socket, name: .so_error)
         if result != 0 {
             throw IOError(errnoCode: result, reason: "finishing a non-blocking connect failed")
@@ -142,7 +142,7 @@ typealias IOVector = iovec
     ///     - pointer: Pointer (and size) to data to write.
     /// - returns: The `IOResult` which indicates how much data could be written and if the operation returned before all could be written (because the socket is in non-blocking mode).
     /// - throws: An `IOError` if the operation failed.
-    func write(pointer: UnsafeRawBufferPointer) throws -> IOResult<Int> {
+    public func write(pointer: UnsafeRawBufferPointer) throws -> IOResult<Int> {
         return try withUnsafeHandle {
             try NIOBSDSocket.send(socket: $0, buffer: pointer.baseAddress!,
                                   length: pointer.count)
@@ -155,7 +155,7 @@ typealias IOVector = iovec
     ///     - iovecs: The `IOVector`s to write.
     /// - returns: The `IOResult` which indicates how much data could be written and if the operation returned before all could be written (because the socket is in non-blocking mode).
     /// - throws: An `IOError` if the operation failed.
-    func writev(iovecs: UnsafeBufferPointer<IOVector>) throws -> IOResult<Int> {
+    public func writev(iovecs: UnsafeBufferPointer<IOVector>) throws -> IOResult<Int> {
         return try withUnsafeHandle {
             try Posix.writev(descriptor: $0, iovecs: iovecs)
         }
@@ -171,7 +171,7 @@ typealias IOVector = iovec
     /// - returns: The `IOResult` which indicates how much data could be written and if the operation returned before all could be written
     /// (because the socket is in non-blocking mode).
     /// - throws: An `IOError` if the operation failed.
-    func sendmsg(pointer: UnsafeRawBufferPointer,
+    public func sendmsg(pointer: UnsafeRawBufferPointer,
                  destinationPtr: UnsafePointer<sockaddr>?,
                  destinationSize: socklen_t,
                  controlBytes: UnsafeMutableRawBufferPointer) throws -> IOResult<Int> {
@@ -215,7 +215,7 @@ typealias IOVector = iovec
     ///     - pointer: The pointer (and size) to the storage into which the data should be read.
     /// - returns: The `IOResult` which indicates how much data could be read and if the operation returned before all could be read (because the socket is in non-blocking mode).
     /// - throws: An `IOError` if the operation failed.
-    func read(pointer: UnsafeMutableRawBufferPointer) throws -> IOResult<Int> {
+    public func read(pointer: UnsafeMutableRawBufferPointer) throws -> IOResult<Int> {
         return try withUnsafeHandle {
             try Posix.read(descriptor: $0, pointer: pointer.baseAddress!, size: pointer.count)
         }

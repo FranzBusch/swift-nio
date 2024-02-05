@@ -24,7 +24,7 @@ internal extension IOResult where T: FixedWidthInteger {
 }
 
 /// An result for an IO operation that was done on a non-blocking resource.
-enum IOResult<T: Equatable>: Equatable {
+public enum IOResult<T: Equatable>: Equatable {
 
     /// Signals that the IO operation could not be completed as otherwise we would need to block.
     case wouldBlock(T)

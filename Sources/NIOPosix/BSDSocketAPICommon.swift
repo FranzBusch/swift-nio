@@ -47,7 +47,7 @@ extension NIOBSDSocket {
 
 extension NIOBSDSocket {
     /// Specifies the type of socket.
-    internal struct SocketType: RawRepresentable {
+    public struct SocketType: RawRepresentable {
         public typealias RawValue = CInt
         public var rawValue: RawValue
         public init(rawValue: RawValue) {
@@ -77,10 +77,10 @@ extension NIOBSDSocket.SocketType {
     /// Supports reliable, two-way, connection-based byte streams without
     /// duplication of data and without preservation of boundaries.
     #if os(Linux) && !canImport(Musl)
-        internal static let stream: NIOBSDSocket.SocketType =
+        public static let stream: NIOBSDSocket.SocketType =
                 NIOBSDSocket.SocketType(rawValue: CInt(SOCK_STREAM.rawValue))
     #else
-        internal static let stream: NIOBSDSocket.SocketType =
+        public static let stream: NIOBSDSocket.SocketType =
                 NIOBSDSocket.SocketType(rawValue: SOCK_STREAM)
     #endif
 

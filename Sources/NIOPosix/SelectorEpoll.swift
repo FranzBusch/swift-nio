@@ -156,13 +156,14 @@ extension Selector: _SelectorBackendProtocol {
                                   interested: SelectorEventSet,
                                   registrationID: SelectorRegistrationID) throws {
         var ev = Epoll.epoll_event()
+//        print("register0", interested.contains(.read))
         ev.events = interested.epollEventSet
         ev.data.u64 = UInt64(EPollUserData(registrationID: registrationID, fileDescriptor: fileDescriptor))
 
         try Epoll.epoll_ctl(epfd: self.selectorFD, op: Epoll.EPOLL_CTL_ADD, fd: fileDescriptor, event: &ev)
     }
 
-    func reregister0<S: Selectable>(selectable: S,
+    func reregister0(
                                     fileDescriptor: CInt,
                                     oldInterested: SelectorEventSet,
                                     newInterested: SelectorEventSet,
@@ -186,11 +187,14 @@ extension Selector: _SelectorBackendProtocol {
     ///     - body: The function to execute for each `SelectorEvent` that was produced.
     func whenReady0(strategy: SelectorStrategy, onLoopBegin loopStart: () -> Void, _ body: (SelectorEvent<R>) throws -> Void) throws -> Void {
         assert(self.myThread == NIOThread.current)
+//        print("whenReady0 epoll", self.registrations)
         guard self.lifecycleState == .open else {
+//            print("whenReady0 not open")
             throw IOError(errnoCode: EBADF, reason: "can't call whenReady for selector as it's \(self.lifecycleState).")
         }
         let ready: Int
 
+//            print("whenReady0 Strategy", strategy)
         switch strategy {
         case .now:
             ready = Int(try Epoll.epoll_wait(epfd: self.selectorFD, events: events, maxevents: Int32(eventsCapacity), timeout: 0))
@@ -208,12 +212,15 @@ extension Selector: _SelectorBackendProtocol {
             }
             fallthrough
         case .block:
+//            print("blocking", self.selectorFD)
             ready = Int(try Epoll.epoll_wait(epfd: self.selectorFD, events: events, maxevents: Int32(eventsCapacity), timeout: -1))
         }
 
+//        print("epoll loop start")
         loopStart()
 
         for i in 0..<ready {
+//            print("epoll loop ready", i)
             let ev = events[i]
             let epollUserData = EPollUserData(rawValue: ev.data.u64)
             let fd = epollUserData.fileDescriptor
@@ -250,6 +257,91 @@ extension Selector: _SelectorBackendProtocol {
                     }
 
                     try body((SelectorEvent(io: selectorEvent, registration: registration)))
+                }
+            }
+        }
+        growEventArrayIfNeeded(ready: ready)
+    }
+
+    func whenReady0(
+        strategy: SelectorStrategy,
+        onLoopBegin loopStart: () -> Void,
+        _ body: (SelectorEventSet, inout R) throws -> Void
+    ) throws -> Void {
+        assert(self.myThread == NIOThread.current)
+//        print("whenReady0 epoll", self.registrations)
+        guard self.lifecycleState == .open else {
+//            print("whenReady0 not open")
+            throw IOError(errnoCode: EBADF, reason: "can't call whenReady for selector as it's \(self.lifecycleState).")
+        }
+        let ready: Int
+
+//            print("whenReady0 Strategy", strategy)
+        switch strategy {
+        case .now:
+            ready = Int(try Epoll.epoll_wait(epfd: self.selectorFD, events: events, maxevents: Int32(eventsCapacity), timeout: 0))
+        case .blockUntilTimeout(let timeAmount):
+            // Only call timerfd_settime if we're not already scheduled one that will cover it.
+            // This guards against calling timerfd_settime if not needed as this is generally speaking
+            // expensive.
+            let next = NIODeadline.now() + timeAmount
+            if next < self.earliestTimer {
+                self.earliestTimer = next
+
+                var ts = itimerspec()
+                ts.it_value = timespec(timeAmount: timeAmount)
+                try TimerFd.timerfd_settime(fd: self.timerFD, flags: 0, newValue: &ts, oldValue: nil)
+            }
+            fallthrough
+        case .block:
+//            print("blocking", self.selectorFD)
+            ready = Int(try Epoll.epoll_wait(epfd: self.selectorFD, events: events, maxevents: Int32(eventsCapacity), timeout: -1))
+        }
+
+//        print("epoll loop start")
+        loopStart()
+
+        for i in 0..<ready {
+//            print("epoll loop ready", i)
+            let ev = events[i]
+            let epollUserData = EPollUserData(rawValue: ev.data.u64)
+            let fd = epollUserData.fileDescriptor
+            let eventRegistrationID = epollUserData.registrationID
+            switch fd {
+            case self.eventFD:
+                var val = EventFd.eventfd_t()
+                // Consume event
+                _ = try EventFd.eventfd_read(fd: self.eventFD, value: &val)
+            case self.timerFD:
+                // Consume event
+                var val: UInt64 = 0
+                // We are not interested in the result
+                _ = try! Posix.read(descriptor: self.timerFD, pointer: &val, size: MemoryLayout.size(ofValue: val))
+
+                // Processed the earliest set timer so reset it.
+                self.earliestTimer = .distantFuture
+            default:
+                // If the registration is not in the Map anymore we deregistered it during the processing of whenReady(...). In this case just skip it.
+                if var registration = registrations[Int(fd)] {
+                    guard eventRegistrationID == registration.registrationID else {
+                        continue
+                    }
+
+                    var selectorEvent = SelectorEventSet(epollEvent: ev)
+                    // we can only verify the events for i == 0 as for i > 0 the user might have changed the registrations since then.
+                    assert(i != 0 || selectorEvent.isSubset(of: registration.interested), "selectorEvent: \(selectorEvent), registration: \(registration)")
+
+                    // in any case we only want what the user is currently registered for & what we got
+                    selectorEvent = selectorEvent.intersection(registration.interested)
+
+                    guard selectorEvent != ._none else {
+                        continue
+                    }
+
+                    defer {
+                        registrations[Int(fd)] = registration
+                    }
+                    try body(selectorEvent, &registration)
                 }
             }
         }

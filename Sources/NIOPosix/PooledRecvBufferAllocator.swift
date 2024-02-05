@@ -15,7 +15,7 @@
 import NIOCore
 
 /// A receive buffer allocator which cycles through a pool of buffers.
-internal struct PooledRecvBufferAllocator {
+public struct PooledRecvBufferAllocator {
     // The pool will either use a single buffer (i.e. `buffer`) OR store multiple buffers
     // in `buffers`. If `buffers` is non-empty then `buffer` MUST be `nil`. If `buffer`
     // is non-nil then `buffers` MUST be empty.
@@ -35,7 +35,7 @@ internal struct PooledRecvBufferAllocator {
     /// The return value from the last call to `recvAllocator.record(actualReadBytes:)`.
     private var mayGrow: Bool
 
-    init(capacity: Int, recvAllocator: RecvByteBufferAllocator) {
+    public init(capacity: Int, recvAllocator: RecvByteBufferAllocator) {
         precondition(capacity > 0)
         self.capacity = capacity
         self.buffer = nil
@@ -82,13 +82,13 @@ internal struct PooledRecvBufferAllocator {
     /// Record the number of bytes which were read.
     ///
     /// Returns whether the next buffer will be larger than the last.
-    mutating func record(actualReadBytes: Int) {
+    public mutating func record(actualReadBytes: Int) {
         self.mayGrow = self.recvAllocator.record(actualReadBytes: actualReadBytes)
     }
 
     /// Provides a buffer with enough writable capacity as determined by the underlying
     /// receive allocator to the given closure.
-    mutating func buffer<Result>(
+    public mutating func buffer<Result>(
         allocator: ByteBufferAllocator,
         _ body: (inout ByteBuffer) throws -> Result
     ) rethrows -> (ByteBuffer, Result) {

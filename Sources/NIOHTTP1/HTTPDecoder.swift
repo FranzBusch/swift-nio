@@ -501,7 +501,7 @@ extension HTTPDecoder: WriteObservingByteToMessageDecoder where In == HTTPClient
 /// either the form of `HTTPClientResponsePart` or `HTTPServerRequestPart`: that is,
 /// it produces messages that correspond to the semantic units of HTTP produced by
 /// the remote peer.
-public final class HTTPDecoder<In, Out>: ByteToMessageDecoder, HTTPDecoderDelegate {
+public final class HTTPDecoder<In, Out>: NIOSingleStepByteToMessageDecoder, HTTPDecoderDelegate {
     public typealias InboundOut = In
 
     // things we build incrementally
@@ -712,6 +712,10 @@ public final class HTTPDecoder<In, Out>: ByteToMessageDecoder, HTTPDecoderDelega
             try self.parser.feedInput(bytes)
         }
         buffer.moveReaderIndex(forwardBy: consumed)
+    }
+
+    public func decode(buffer: inout ByteBuffer) throws -> In? {
+        <#code#>
     }
 
     public func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {

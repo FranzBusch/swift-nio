@@ -20,6 +20,6 @@ import NIOCore
 /// - warning:
 ///     `Selectable`s are not thread-safe, only to be used on the appropriate
 ///     `EventLoop`.
-protocol Selectable {
+public protocol Selectable {
     func withUnsafeHandle<T>(_: (NIOBSDSocket.Handle) throws -> T) throws -> T
 }

@@ -489,7 +489,7 @@ extension ScheduledTask: Comparable {
 }
 
 extension NIODeadline {
-    func readyIn(_ target: NIODeadline) -> TimeAmount {
+    public func readyIn(_ target: NIODeadline) -> TimeAmount {
         if self < target {
             return .nanoseconds(0)
         }

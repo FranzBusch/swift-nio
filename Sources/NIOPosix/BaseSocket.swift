@@ -22,7 +22,7 @@ import let WinSDK.EBADF
 import struct WinSDK.socklen_t
 #endif
 
-protocol Registration {
+public protocol Registration {
     /// The `SelectorEventSet` in which the `Registration` is interested.
     var interested: SelectorEventSet { get set }
     var registrationID: SelectorRegistrationID { get set }
@@ -111,7 +111,7 @@ extension UnsafeMutablePointer where Pointee == sockaddr {
 /// Base class for sockets.
 ///
 /// This should not be created directly but one of its sub-classes should be used, like `ServerSocket` or `Socket`.
-class BaseSocket: BaseSocketProtocol {
+public class BaseSocket: BaseSocketProtocol {
     typealias SelectableType = BaseSocket
 
     private var descriptor: NIOBSDSocket.Handle
@@ -270,7 +270,7 @@ class BaseSocket: BaseSocketProtocol {
     ///     - name: The name of the option to set.
     ///     - value: The value for the option.
     /// - throws: An `IOError` if the operation failed.
-    func setOption<T>(level: NIOBSDSocket.OptionLevel, name: NIOBSDSocket.Option, value: T) throws {
+    public func setOption<T>(level: NIOBSDSocket.OptionLevel, name: NIOBSDSocket.Option, value: T) throws {
         if level == .tcp && name == .tcp_nodelay {
             switch try? self.localAddress().protocol {
             case .some(.inet), .some(.inet6): break
@@ -338,7 +338,7 @@ class BaseSocket: BaseSocketProtocol {
     /// After the socket was closed all other methods will throw an `IOError` when called.
     ///
     /// - throws: An `IOError` if the operation failed.
-    func close() throws {
+    public func close() throws {
         try NIOBSDSocket.close(socket: try self.takeDescriptorOwnership())
     }
 
@@ -357,7 +357,7 @@ class BaseSocket: BaseSocketProtocol {
 }
 
 extension BaseSocket: Selectable {
-    func withUnsafeHandle<T>(_ body: (NIOBSDSocket.Handle) throws -> T) throws -> T {
+    public func withUnsafeHandle<T>(_ body: (NIOBSDSocket.Handle) throws -> T) throws -> T {
         guard self.isOpen else {
             throw IOError(errnoCode: EBADF, reason: "file descriptor already closed!")
         }
@@ -366,7 +366,7 @@ extension BaseSocket: Selectable {
 }
 
 extension BaseSocket: CustomStringConvertible {
-    var description: String {
+    public var description: String {
         return "BaseSocket { fd=\(self.descriptor) }"
     }
 }

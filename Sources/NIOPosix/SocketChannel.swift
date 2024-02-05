@@ -28,7 +28,7 @@ import struct WinSDK.socklen_t
 #endif
 
 extension ByteBuffer {
-    mutating func withMutableWritePointer(body: (UnsafeMutableRawBufferPointer) throws -> IOResult<Int>) rethrows -> IOResult<Int> {
+    public mutating func withMutableWritePointer(body: (UnsafeMutableRawBufferPointer) throws -> IOResult<Int>) rethrows -> IOResult<Int> {
         var singleResult: IOResult<Int>!
         _ = try self.writeWithUnsafeMutableBytes(minimumWritableBytes: 0) { ptr in
             let localWriteResult = try body(ptr)
