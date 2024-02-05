@@ -291,7 +291,7 @@ public class Selector<R: Registration>  {
             var reg = registrations[Int(fd)]!
             var oldInterested = reg.interested
             body(&reg)
-            print(self.myThread)
+//            print(self.myThread)
             self.registrations[Int(fd)] = reg
 //            print("re-reg", reg)
             assert(reg.interested.contains(.reset), "must register for at least .reset but tried registering for \(reg.interested)")
